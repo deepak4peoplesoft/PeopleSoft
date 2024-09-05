@@ -1,0 +1,30 @@
+&rootObj = CreateJsonObject();
+&jArray = CreateJsonArray();
+
+&jArray = CreateJsonArray();
+&jArrObj = CreateJsonObject();
+
+&jArrObj.AddProperty("featureType", "KEY_VALUE_EXTRACTION");
+&jArray.AddJsonObjectElement("Member Names", &jArrObj);
+
+&jArrObj = CreateJsonObject();
+&jArrObj.AddProperty("featureType", "DOCUMENT_CLASSIFICATION");
+&jArrObj.AddProperty("maxResults", 5);
+&jArray.AddJsonObjectElement("Member Names", &jArrObj);
+
+
+&rootObj.AddJsonArray("features", &jArray);
+&rootObj.AddProperty("documentType", "RECEIPT");
+&rootObj.AddProperty("compartmentId", "ocid1.compartment.oc1..aaaaaaaalhrz4krrvvzfght2jslxy4j5fkfoxip4gmyemaoni7dldiz6srwq");
+&docObj = CreateJsonObject();
+&docObj.AddProperty("source", "INLINE");
+WinMessage(&base64string, 0);
+&docObj.AddProperty("data", &base64string);
+&rootObj.AddJsonObject("document", &docObj);
+
+Local JsonGenerator &jgen = CreateJsonGenerator();
+Local JsonNode &root = CreateJsonNode();
+&root.SetJsonObject(&rootObj);
+&jgen.SetRootNode(&root);
+&jgen.SetPrettyMode( False);
+*>
