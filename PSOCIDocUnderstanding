@@ -68,7 +68,7 @@ End-If;
 
 
 Local string &jsonString = "{""features"": [{""featureType"": ""KEY_VALUE_EXTRACTION""},{""featureType"": ""DOCUMENT_CLASSIFICATION"",";
-&jsonString = &jsonString | " ""maxResults"": 5}],""documentType"": ""RECEIPT"",""compartmentId"": ""ocid1.compartment.oc1..aaaaaaaalhrz4krrvvzfght2jslxy4j5fkfoxip4gmyemaoni7dldiz6srwq"",";
+&jsonString = &jsonString | " ""maxResults"": 5}],""documentType"": ""RECEIPT"",""compartmentId"": ""<enter compartment oci id>"",";
 &jsonString = &jsonString | """document"": {""source"": ""INLINE"",";
 &jsonString = &jsonString | """data"": """ | &base64string | """ }}";
 
@@ -94,7 +94,7 @@ rem WinMessage(&jsonString, 0);
 
 &rootObj.AddJsonArray("features", &jArray);
 &rootObj.AddProperty("documentType", "RECEIPT");
-&rootObj.AddProperty("compartmentId", "ocid1.compartment.oc1..aaaaaaaalhrz4krrvvzfght2jslxy4j5fkfoxip4gmyemaoni7dldiz6srwq");
+&rootObj.AddProperty("compartmentId", "<enter compartment oci id>");
 &docObj = CreateJsonObject();
 &docObj.AddProperty("source", "INLINE");
 WinMessage(&base64string, 0);
@@ -133,7 +133,7 @@ Local string &xcontentsha256 = "x-content-sha256: " | &sha256hex1;
 &cryEncode.UpdateData(&signingString);
 &encodeResult = Substitute(Substitute(&cryEncode.Result, Char(13), ""), Char(10), "");
 &fileoutput1.WriteLine("&encodeResult - " | &encodeResult);
-Local string &keyId = """" | "ocid1.tenancy.oc1..aaaaaaaapur7lh26e333baviruadq5o6hxiajfe2tqjegglsvw4zxzbnw3ta" | &sep | "ocid1.user.oc1..aaaaaaaaugevuonhp5epw3qnuuzfg3lkgqcmmucuh55t6s2yvax22q6p2n7a" | &sep | "0e:6a:4b:b0:a2:1d:a6:c8:84:a1:a4:0a:46:17:68:e2" | """";
+Local string &keyId = """" | "<enter tenancy oci id>" | &sep | "<enter user oci id>" | &sep | "<enter fingerprint>" | """";
 Local string &authHeader = "Signature version=""1"",keyId=" | &keyId | ",algorithm=""rsa-sha256"",headers=""(request-target) date host x-content-sha256 content-type content-length"",signature=" | """" | &encodeResult | """";
 &fileoutput1.WriteLine("&keyId - " | &keyId);
 &fileoutput1.WriteLine("&authHeader - " | Substitute(Substitute(&authHeader, Char(13), ""), Char(10), ""));
