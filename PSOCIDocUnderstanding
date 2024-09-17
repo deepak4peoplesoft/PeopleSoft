@@ -1,4 +1,4 @@
-import BFOCIAPI:*;
+
 
 rem Function to Hash string using SHA56;
 Function GetSHA256Hash(&inputstring As string) Returns string
