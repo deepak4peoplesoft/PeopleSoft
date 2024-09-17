@@ -1,3 +1,6 @@
+import BFOCIAPI:*;
+
+rem Function to Hash string using SHA56;
 Function GetSHA256Hash(&inputstring As string) Returns string
    Local JavaObject &messagedigest, &byteArray, &bigInt, &inputBytes;
    
@@ -55,10 +58,11 @@ If (&bf_numRetCode = %Attachment_Success) Then
    
    Local File &file = GetFile("/u01/interface/exreceipt/" | &bf_strUniqueName, "r", %FilePath_Absolute);
    If &file.IsOpen Then
+      rem Generate the base64string for the uploaded file;
       &base64string = &file.GetBase64StringFromBinary();
       rem WinMessage(&base64string, 0);
       &file.Close();
-      WinMessage(&base64string, 0);
+      rem WinMessage(&base64string, 0);
    End-If;
    
    /* Record in audit table */
@@ -66,48 +70,18 @@ If (&bf_numRetCode = %Attachment_Success) Then
    
 End-If;
 
-
+rem Form the body of the request;
+rem PeopleTools Native methods were not used as adding base64 string to the json node was creating issues due to a bug;
 Local string &jsonString = "{""features"": [{""featureType"": ""KEY_VALUE_EXTRACTION""},{""featureType"": ""DOCUMENT_CLASSIFICATION"",";
-&jsonString = &jsonString | " ""maxResults"": 5}],""documentType"": ""RECEIPT"",""compartmentId"": ""<enter compartment oci id>"",";
+&jsonString = &jsonString | " ""maxResults"": 5}],""documentType"": ""RECEIPT"",""compartmentId"": ""ocid1.compartment.oc1..aaaaaaaalhrz4krrvvzfght2jslxy4j5fkfoxip4gmyemaoni7dldiz6srwq"",";
 &jsonString = &jsonString | """document"": {""source"": ""INLINE"",";
 &jsonString = &jsonString | """data"": """ | &base64string | """ }}";
 
 Local File &filedata = GetFile("testdata.txt", "w", %FilePath_Relative);
 &filedata.WriteLine(&jsonString);
-rem WinMessage(&jsonString, 0);
 
-<*
-&rootObj = CreateJsonObject();
-&jArray = CreateJsonArray();
-
-&jArray = CreateJsonArray();
-&jArrObj = CreateJsonObject();
-
-&jArrObj.AddProperty("featureType", "KEY_VALUE_EXTRACTION");
-&jArray.AddJsonObjectElement("Member Names", &jArrObj);
-
-&jArrObj = CreateJsonObject();
-&jArrObj.AddProperty("featureType", "DOCUMENT_CLASSIFICATION");
-&jArrObj.AddProperty("maxResults", 5);
-&jArray.AddJsonObjectElement("Member Names", &jArrObj);
-
-
-&rootObj.AddJsonArray("features", &jArray);
-&rootObj.AddProperty("documentType", "RECEIPT");
-&rootObj.AddProperty("compartmentId", "<enter compartment oci id>");
-&docObj = CreateJsonObject();
-&docObj.AddProperty("source", "INLINE");
-WinMessage(&base64string, 0);
-&docObj.AddProperty("data", &base64string);
-&rootObj.AddJsonObject("document", &docObj);
-
-Local JsonGenerator &jgen = CreateJsonGenerator();
-Local JsonNode &root = CreateJsonNode();
-&root.SetJsonObject(&rootObj);
-&jgen.SetRootNode(&root);
-&jgen.SetPrettyMode( False);
-*>
 Local string &originalString1 = &jsonString;
+rem Get the SHA256 of the generated signature;
 Local string &sha256hex1 = GetSHA256Hash(&originalString1);
 
 Local File &fileoutput1;
@@ -116,29 +90,43 @@ Local File &fileoutput1;
 &fileoutput1.WriteLine("&sha256hex1 - " | &sha256hex1);
 &content = Len(&jsonString);
 Local datetime &currentDateTime = %Datetime;
+
+rem Form the headers required for Authorization;
 /* Format the date and time */
 Local string &formattedDateTime = DateTimeToLocalizedString(AddToDateTime(&currentDateTime, 0, 0, 0, - 1, 0, 0), "EEE, dd MMM yyyy HH:mm:ss") | " GMT";
 Local string &signingString;
 Local string &sep = "/";
+rem Header - date;
 Local string &date_String = "date: " | &formattedDateTime;
+rem Header - (request-target);
 Local string &req_target = "(request-target): " | "post /20221109/actions/analyzeDocument";
+rem Header - host;
 Local string &host = "host: " | "document.aiservice.uk-london-1.oci.oraclecloud.com";
+rem Header - content-length;
 Local string &contentlength = "content-length: " | Len(&jsonString);
+rem Header - content-type;
 Local string &contenttype = "content-type: " | "application" | &sep | "json";
+rem Header - x-content-sha256;
 Local string &xcontentsha256 = "x-content-sha256: " | &sha256hex1;
+rem Concatenate all the above headers separated by new line separator;
 &signingString = &req_target | Char(10) | &date_String | Char(10) | &host | Char(10) | &xcontentsha256 | Char(10) | &contenttype | Char(10) | &contentlength;
 &fileoutput1.WriteLine("&signingString - " | &signingString);
+
+rem Encrypt the above generated string using PS Encryption Technololy. Encryption algorithm used - RSA SHA-256;
 &cryEncode = CreateObject("Crypt");
-&cryEncode.Open("BFENCOCIREQ");
+&cryEncode.Open("OCISIGNREQ");
 &cryEncode.UpdateData(&signingString);
 &encodeResult = Substitute(Substitute(&cryEncode.Result, Char(13), ""), Char(10), "");
 &fileoutput1.WriteLine("&encodeResult - " | &encodeResult);
-Local string &keyId = """" | "<enter tenancy oci id>" | &sep | "<enter user oci id>" | &sep | "<enter fingerprint>" | """";
+
+rem Form the keyId by concatenating Tenancy Id/User OCI Id/Fingerprint;
+Local string &keyId = """" | &tenancyid | &sep | &userociid | &sep | &fingerprint | """";
+rem Form the final Authorization Header;
 Local string &authHeader = "Signature version=""1"",keyId=" | &keyId | ",algorithm=""rsa-sha256"",headers=""(request-target) date host x-content-sha256 content-type content-length"",signature=" | """" | &encodeResult | """";
 &fileoutput1.WriteLine("&keyId - " | &keyId);
 &fileoutput1.WriteLine("&authHeader - " | Substitute(Substitute(&authHeader, Char(13), ""), Char(10), ""));
 
-
+rem Invoke the OCI REST API for Document Intelligence;
 Local Message &resp;
 Local Message &req;
 Local IBConnectorInfo &connectorInfo;
@@ -160,66 +148,54 @@ rem document.aiservice.uk-london-1.oci.oraclecloud.com;
 &sUrl = "https://document.workflow.uk-london-1.oci.oc-test.com/20221109/actions/analyzeDocument";
 &bRet = &connectorInfo.AddConnectorProperties("Method", "POST", %HttpProperty);
 &bRet = &connectorInfo.AddConnectorProperties("URL", &sUrl, %HttpProperty);
-REM ** TODO: Add other HTTP headers, such as Authorization header, etc.;
+
+REM ** Add the below headers to the request message;
 &bRet = &connectorInfo.AddConnectorProperties("Authorization", Substitute(Substitute(&authHeader, Char(13), ""), Char(10), ""), %HttpHeader);
 &bRet = &connectorInfo.AddConnectorProperties("Content-Type", "application/json", %HttpHeader);
 &bRet = &connectorInfo.AddConnectorProperties("Date", &formattedDateTime, %HttpHeader);
 &bRet = &connectorInfo.AddConnectorProperties("Host", "document.aiservice.uk-london-1.oci.oraclecloud.com", %HttpHeader);
 &bRet = &connectorInfo.AddConnectorProperties("x-content-sha256", &sha256hex1, %HttpHeader);
 &bRet = &connectorInfo.AddConnectorProperties("Content-Length", &content, %HttpHeader);
+
+REM ** Set the json string as body to the request message;
 &bRet = &req.SetContentString(&jsonString);
-WinMessage(&req.GetContentString(), 0);
+
+REM ** Submit the request;
 &resp = %IntBroker.ConnectorRequest(&req);
 
 If &resp.ResponseStatus = %IB_Status_Success Then
+   REM ** Convert the returned message to json string;
    &sJson = &resp.GetContentString();
    REM ** TODO: Parse and process the response;
 Else
    MessageBox(0, "", 0, 0, &resp.IBException.ToString());
 End-If;
-WinMessage(&sJson, 0);
-<*
-REM ** Mock processing to prove it works;
-Local File &f = GetFile("posts.json", "W", "U", %FilePath_Relative);
-&f.WriteString(&sJson);
-&f.Close();
-*>
 
-
-
-REM ** Mock processing to prove it works;
-rem Local File &f = GetFile("posts.json", "r", %FilePath_Relative);
-rem &sJson = &f.GetString();
-rem &f.Close();
-
+REM **Parse and read the json response to fetch the required params;
 Local JsonParser &parser = CreateJsonParser();
 Local boolean &bParseResult = &parser.Parse(&sJson);
-
-
 Local JsonObject &jObj, &root;
 Local JsonArray &jArray;
 Local JsonNode &jsonNode;
 Local string &curr;
 
 &root = &parser.GetRootObject();
-
 &jsonNode = &root.GetJsonNode("pages");
 &jArray = &jsonNode.GetJsonArray();
 &jObj = &jArray.GetJsonObject(1);
 rem &jArray.GetJsonObject(1).getjsonobject("fieldLabel");
 &jArray = &jObj.GetJsonArray("documentFields");
-WinMessage(&jArray.Length(), 0);
 For &i = 1 To &jArray.Length()
-   rem WinMessage(&jArray.GetJsonObject(&i).GetJsonObject("fieldLabel").GetString("name"), 0);
    &name = &jArray.GetJsonObject(&i).GetJsonObject("fieldLabel").GetString("name");
+   REM ** Fetch Transaction Date;
    If &name = "TransactionDate" Then
-      WinMessage("&td", 0);
       WinMessage(&jArray.GetJsonObject(&i).GetJsonObject("fieldValue").GetAsString("value"), 0);
    End-If;
+   REM ** Fetch Total Amount;
    If &name = "Total" Then
-      WinMessage("&t", 0);
       WinMessage(&jArray.GetJsonObject(&i).GetJsonObject("fieldValue").GetNumber("value"), 0);
    End-If;
+   REM ** Fetch Currency;
    If &name = "Currency" Then
       &curr = &jArray.GetJsonObject(&i).GetJsonObject("fieldValue").GetAsString("value");
       If Not None(&curr) Then
